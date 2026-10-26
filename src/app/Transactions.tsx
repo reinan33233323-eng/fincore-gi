@@ -1,3 +1,4 @@
+import GiKitten from "./GiKitten";
 import { useEffect, useState } from 'react';
 import { ArrowDownUp, CheckCircle2, ChevronLeft, ChevronRight, CreditCard, Info, Landmark, MoreVertical, Paperclip, Pencil, Trash2, Plus, ReceiptText, Repeat2, Search, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { entryValue } from '../lib/finance';
@@ -49,7 +50,7 @@ export default function Transactions(p:Props){
    {error&&<p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
   </div>
   <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 sm:px-8" aria-label="Lista de lançamentos">
-   {!filtered.length&&<div className="fc-screen flex flex-col items-center py-16 text-center"><span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400"><ReceiptText size={24}/></span><p className="text-sm font-medium text-[#831843]">Nenhum lançamento por aqui</p><p className="mt-1 text-xs text-zinc-500">Ajuste o período ou os filtros, ou crie um novo lançamento.</p></div>}
+   {!filtered.length&&<div className="fc-screen flex flex-col items-center py-16 text-center"><GiKitten className="mb-4 h-24 w-28" /><p className="text-sm font-medium text-[#831843]">Nenhum lançamento por aqui</p><p className="mt-1 text-xs text-zinc-500">Ajuste o período ou os filtros, ou crie um novo lançamento.</p></div>}
    {[...groups].map(([date,rows])=><div key={date} className="mt-3"><div className="sticky top-0 z-[1] -mx-1 mb-1 flex items-center gap-3 bg-white/90 px-1 py-2 backdrop-blur-sm"><span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-medium text-zinc-600">{dateLabel(date)}</span><span className="h-px flex-1 bg-zinc-100"/></div><div className="fc-rows">{rows.map(entry=>{
     const cat=p.categories.find(c=>c.name===entry.category&&c.unit===entry.unit&&c.kind===entry.kind);
     return <div key={entry.id} className={`group flex min-h-[60px] items-center gap-3 rounded-2xl px-2 hover:bg-zinc-50 ${selected.includes(entry.id)?'bg-zinc-50 ring-1 ring-zinc-200':''}`}>

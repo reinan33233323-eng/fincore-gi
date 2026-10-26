@@ -1,3 +1,4 @@
+import GiKitten from "./GiKitten";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   readAuthenticatedRows,
@@ -4030,20 +4031,21 @@ function App() {
       { id: "relatorios", text: "Relatórios", Icon: BarChart3 },
     ];
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f4f5]">
+    <div className="gi-app flex h-screen overflow-hidden bg-[#fff5fa]">
       <aside
-        className={`fixed z-30 fc-grain flex h-full w-64 shrink-0 flex-col bg-[radial-gradient(120%_60%_at_0%_0%,#db2777_0%,#9d174d_55%,#500724_100%)] text-white shadow-[inset_-1px_0_0_rgba(255,255,255,0.06)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] lg:relative ${menu ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        className={`gi-sidebar fixed z-30 fc-grain flex h-full w-64 shrink-0 flex-col bg-[radial-gradient(120%_60%_at_0%_0%,#db2777_0%,#9d174d_55%,#500724_100%)] text-white shadow-[inset_-1px_0_0_rgba(255,255,255,0.06)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] lg:relative ${menu ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="relative z-[1] flex items-center justify-between border-b border-white/[0.07] px-4 py-6">
           <div className="min-w-0 flex-1 text-center">
             <img
-              src={`${import.meta.env.BASE_URL}fincore-gi-logo.svg`}
+              src={`${import.meta.env.BASE_URL}fincore-gi-sidebar-logo.svg`}
               alt="FinCore Gi"
               className="mx-auto h-14 w-40 object-contain"
             />
             <p className="mt-1.5 text-[11px] font-medium text-white/40">
               Gestão financeira pessoal
             </p>
+            <GiKitten className="mx-auto mt-2 h-12 w-16" />
           </div>
           <button className="lg:hidden" onClick={() => setMenu(false)}>
             <X />
@@ -4242,7 +4244,7 @@ function App() {
               <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h2 className="text-[1.65rem] font-semibold leading-tight tracking-[-0.035em] text-[#831843]">
-                    Visão mensal
+                    <span className="inline-flex items-center gap-3">Visão mensal <GiKitten className="h-14 w-16" /></span>
                   </h2>
                   <p className="mt-1 flex items-start gap-2 text-xs text-zinc-500">
                     <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${syncError ? "bg-red-500" : refreshing ? "animate-pulse bg-amber-500" : "bg-emerald-500"}`} />
@@ -4290,9 +4292,9 @@ function App() {
                               <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
                             </linearGradient>
                           </defs>
-                          <XAxis dataKey="dia" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.4)" }} axisLine={false} tickLine={false} interval={4} />
+                          <XAxis dataKey="dia" tick={{ fontSize: 10, fill: "#945773" }} axisLine={false} tickLine={false} interval={4} />
                           <YAxis hide domain={["dataMin", "dataMax"]} />
-                          <Tooltip cursor={{ stroke: "rgba(255,255,255,0.25)" }} formatter={(value: number) => [fmt(value), "Saldo"]} labelFormatter={(label) => `Dia ${label}`} />
+                          <Tooltip cursor={{ stroke: "#d995b6" }} formatter={(value: number) => [fmt(value), "Saldo"]} labelFormatter={(label) => `Dia ${label}`} />
                           <Area type="monotone" dataKey="saldo" stroke="#34d399" strokeWidth={2} fill="url(#fc-balance)" activeDot={{ r: 4, fill: "#fff", stroke: "#34d399", strokeWidth: 2 }} />
                         </AreaChart>
                       </ResponsiveContainer>
