@@ -1,0 +1,352 @@
+import { supabase } from "./supabase";
+import { isNetworkFailure, networkUploadMessage } from "./files";
+
+const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+type RemoteError = {
+  code?: string;
+  message?: string;
+  details?: string;
+};
+
+function writeError(error: RemoteError) {
+  if (error.code === "23505")
+    return new Error(
+      "Já existe uma categoria com este nome, tipo e centro de custo.",
+    );
+  if (error.code === "42501")
+    return new Error(
+      "Sua sessão não possui permissão para salvar este centro de custo. Saia e entre novamente; se persistir, peça ao Master para conferir seu acesso.",
+    );
+  if (error.code === "23514")
+    return new Error("Os dados informados não são aceitos pelo banco.");
+  return new Error(
+    error.message || error.details || "Não foi possível salvar no banco.",
+  );
+}
+
+/**
+ * The app can stay open for hours. Refresh immediately before a mutation so
+ * RLS always evaluates the active login instead of a token restored by the
+ * browser from an older session.
+ */
+async function withFreshSession<T>(write: () => PromiseLike<{ data: T; error: any }>) {
+  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError || !refreshed.session)
+    throw new Error("Sua sessão expirou. Entre novamente para salvar os dados.");
+
+  let result = await write();
+  // A first denied request can happen when a tab has just changed accounts.
+  // Retrying after the explicit refresh is safe: upserts use the same ID.
+  if (result.error?.code === "42501") {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (!error && data.session) result = await write();
+  }
+  if (result.error) throw writeError(result.error);
+  return result.data;
+}
+
+function entryRow(entry: any) {
+  return {
+    id: entry.id,
+    ...(entry.cardPurchaseDate !== undefined ? {purchase_date:entry.cardPurchaseDate} : {}),
+    ...(entry.cardInstallmentOffset !== undefined ? {card_installment_offset:entry.cardInstallmentOffset} : {}),
+    ...(entry.creditCardId !== undefined ? {credit_card_id:entry.creditCardId,invoice_month:entry.invoiceMonth} : {}),
+    series_id: uuid(entry.seriesId) ? entry.seriesId : null,
+    kind: entry.kind,
+    unit: entry.unit,
+    account: entry.account,
+    category: entry.category,
+    description: entry.description,
+    beneficiary: entry.beneficiary || "",
+    // Do not send the new column to an older database before its migration is
+    // applied. An explicit null is still sent when a contact is unlinked.
+    ...(entry.counterpartyId !== undefined
+      ? { counterparty_id: uuid(entry.counterpartyId) ? entry.counterpartyId : null }
+      : {}),
+    pix: entry.pix || "",
+    amount: entry.amount,
+    date: entry.date,
+    status: entry.status,
+    recurrence: entry.recurrence,
+    installments: entry.installments || 1,
+    installment: entry.installment || null,
+    notes: entry.notes || "",
+    // Only sent when present, so entry saving keeps working on a database
+    // whose attachments migration has not been applied yet.
+    ...(entry.attachments !== undefined ? { attachments: entry.attachments } : {}),
+    ...(entry.juros !== undefined ? { juros: entry.juros } : {}),
+    ...(entry.paidDate !== undefined ? { paid_date: entry.paidDate || null } : {}),
+    ...(entry.discount !== undefined ? { discount: entry.discount } : {}),
+    ...(entry.bankId !== undefined ? { bank_id: uuid(entry.bankId) ? entry.bankId : null } : {}),
+  };
+}
+
+const attachmentsBucket = "attachments";
+
+/**
+ * Envia um arquivo ao Storage. Uma falha de rede ("Failed to fetch") é tentada
+ * mais uma vez e, se persistir, vira uma mensagem clara em português.
+ */
+async function uploadFile(bucket: string, path: string, file: File) {
+  for (let attempt = 1; ; attempt += 1) {
+    let message: string | undefined;
+    try {
+      const { error } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, { upsert: true, contentType: file.type || undefined });
+      if (!error) return path;
+      message = error.message;
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    if (isNetworkFailure(message) && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      continue;
+    }
+    throw new Error(isNetworkFailure(message) ? networkUploadMessage : message || "Não foi possível enviar o arquivo.");
+  }
+}
+
+export async function uploadEntryAttachment(path: string, file: File) {
+  return uploadFile(attachmentsBucket, path, file);
+}
+
+export async function signedAttachmentUrl(path: string) {
+  const { data, error } = await supabase.storage
+    .from(attachmentsBucket)
+    .createSignedUrl(path, 600);
+  if (error || !data?.signedUrl)
+    throw new Error(error?.message || "Não foi possível abrir o arquivo.");
+  return data.signedUrl;
+}
+
+export async function removeEntryAttachments(paths: string[]) {
+  if (!paths.length) return;
+  await supabase.storage.from(attachmentsBucket).remove(paths);
+}
+
+export async function saveRemoteEntries(entries: any[]) {
+  const valid = entries.filter((row) => uuid(row.id));
+  if (!valid.length) return;
+  await withFreshSession(() =>
+    supabase.from("entries").upsert(valid.map(entryRow)),
+  );
+}
+
+export async function saveRemoteCategory(category: any) {
+  if (!uuid(category.id)) return;
+  await withFreshSession(() => supabase.from("categories").upsert(category));
+}
+
+export async function createRemoteCostCenter(name: string, initials: string, color: string) {
+  return withFreshSession(() =>
+    supabase.rpc("create_managed_cost_center", {
+      requested_name: name,
+      requested_initials: initials,
+      requested_color: color,
+    }).single(),
+  );
+}
+
+export async function updateRemoteCostCenter(
+  name: string,
+  patch: { initials: string; color: string },
+) {
+  return withFreshSession(() =>
+    supabase.from("cost_centers")
+      .update(patch)
+      .eq("name", name)
+      .select("name, initials, color")
+      .single(),
+  );
+}
+
+export async function deleteRemoteCostCenter(name: string) {
+  return withFreshSession(() =>
+    supabase.from("cost_centers").delete().eq("name", name),
+  );
+}
+
+export async function saveRemoteCounterparty(counterparty: any) {
+  if (!uuid(counterparty.id)) throw new Error("Cadastro inválido.");
+  return withFreshSession(() =>
+    supabase.from("counterparties").upsert({
+      id: counterparty.id,
+      kind: counterparty.kind,
+      unit: counterparty.unit,
+      name: counterparty.name,
+      provides: counterparty.provides || "",
+      archived: counterparty.archived || false,
+    }).select("id, kind, unit, name, provides, archived").single(),
+  );
+}
+
+export async function setRemoteCounterpartyArchived(id: string, archived: boolean) {
+  if (!uuid(id)) throw new Error("Cadastro inválido.");
+  return withFreshSession(() =>
+    supabase.from("counterparties")
+      .update({ archived })
+      .eq("id", id)
+      .select("id, kind, unit, name, provides, archived")
+      .single(),
+  );
+}
+
+export async function deleteRemoteEntries(ids: string[]) {
+  const valid = ids.filter(uuid);
+  if (!valid.length) return;
+  await withFreshSession(() => supabase.from("entries").delete().in("id", valid));
+}
+
+export async function deleteRemoteEntrySeries(seriesId: string) {
+  if (!uuid(seriesId)) return;
+  // A recurring series can contain hundreds of records. Deleting by series_id
+  // avoids an oversized URL made from one id per installment.
+  await withFreshSession(() =>
+    supabase.from("entries").delete().eq("series_id", seriesId),
+  );
+}
+
+export async function deleteRemoteCategory(categoryId: string) {
+  if (!uuid(categoryId)) return;
+  await withFreshSession(() =>
+    supabase.from("categories").delete().eq("id", categoryId),
+  );
+}
+
+// ---------- Notas da equipe ----------
+
+export type TeamMember = {
+  id: string;
+  name: string;
+  service: string;
+  document: string;
+  email: string;
+  expected_amount: number | null;
+  due_day: number;
+  active: boolean;
+  /** Mês (YYYY-MM) a partir do qual o colaborador deixa de enviar nota. */
+  inactive_from?: string | null;
+  category_id?: string | null;
+  created_at?: string;
+};
+
+export type TeamInvoice = {
+  id: string;
+  member_id: string;
+  /** Mês em que a nota aparece e conta como enviada (YYYY-MM). */
+  reference_month: string;
+  /** Mês do serviço prestado (YYYY-MM), só informativo. */
+  competence: string;
+  invoice_number: string;
+  amount: number | null;
+  issue_date: string | null;
+  files: string[];
+  notes: string;
+  created_at?: string;
+};
+
+export async function saveTeamMember(member: Omit<TeamMember, "created_at">) {
+  if (!uuid(member.id)) throw new Error("Cadastro inválido.");
+  return withFreshSession(() =>
+    supabase.from("team_members").upsert(member).select("*").single(),
+  ) as Promise<TeamMember>;
+}
+
+export async function deleteTeamMember(id: string) {
+  await withFreshSession(() => supabase.from("team_members").delete().eq("id", id));
+}
+
+export async function saveTeamInvoice(invoice: Omit<TeamInvoice, "created_at">) {
+  if (!uuid(invoice.id)) throw new Error("Nota inválida.");
+  return withFreshSession(() =>
+    supabase.from("team_invoices").upsert(invoice).select("*").single(),
+  ) as Promise<TeamInvoice>;
+}
+
+export async function deleteTeamInvoice(id: string) {
+  await withFreshSession(() => supabase.from("team_invoices").delete().eq("id", id));
+}
+
+export type TeamCategory = { id: string; name: string; created_at?: string };
+
+export async function saveTeamCategory(category: { id: string; name: string }) {
+  if (!uuid(category.id)) throw new Error("Categoria inválida.");
+  return withFreshSession(() =>
+    supabase.from("team_categories").upsert(category).select("*").single(),
+  ) as Promise<TeamCategory>;
+}
+
+export async function deleteTeamCategory(id: string) {
+  await withFreshSession(() => supabase.from("team_categories").delete().eq("id", id));
+}
+
+const teamNotesBucket = "team-notes";
+
+export async function uploadTeamNoteFile(path: string, file: File) {
+  return uploadFile(teamNotesBucket, path, file);
+}
+
+export async function teamNoteFileUrl(path: string, downloadName?: string) {
+  const { data, error } = await supabase.storage
+    .from(teamNotesBucket)
+    .createSignedUrl(path, 600, downloadName ? { download: downloadName } : undefined);
+  if (error || !data?.signedUrl)
+    throw new Error(error?.message || "Não foi possível abrir o arquivo.");
+  return data.signedUrl;
+}
+
+export async function removeTeamNoteFiles(paths: string[]) {
+  if (!paths.length) return;
+  await supabase.storage.from(teamNotesBucket).remove(paths);
+}
+
+// ---------- Bancos ----------
+
+export type Bank = { id: string; name: string; created_at?: string };
+
+export async function saveBank(bank: { id: string; name: string }) {
+  if (!uuid(bank.id)) throw new Error("Banco inválido.");
+  return withFreshSession(() =>
+    supabase.from("banks").upsert(bank).select("*").single(),
+  ) as Promise<Bank>;
+}
+
+export async function deleteBank(id: string) {
+  await withFreshSession(() => supabase.from("banks").delete().eq("id", id));
+}
+
+export async function saveCreditCard(card: import('./credit').CreditCard) {
+ return withFreshSession(() => supabase.from('credit_cards').upsert(card).select('*').single()) as Promise<import('./credit').CreditCard>;
+}
+export async function payCreditInvoice(cardId:string, month:string, bankId:string, date:string) {
+ return withFreshSession(() => supabase.rpc('pay_personal_card_invoice',{target_card:cardId,target_month:month,target_bank:bankId,payment_date:date}));
+}
+export async function addCardPartialPayment(cardId:string, month:string, bankId:string, amount:number, date:string) {
+ return withFreshSession(() => supabase.rpc('add_personal_card_partial_payment',{target_card:cardId,target_month:month,target_bank:bankId,payment_amount:amount,payment_date:date}));
+}
+export async function deleteCardPartialPayment(id:string) {
+ return withFreshSession(() => supabase.rpc('delete_personal_card_partial_payment',{target_id:id}));
+}
+export async function setBankBalance(bankId:string, balance:number, date:string) {
+ return withFreshSession(() => supabase.rpc('set_personal_bank_balance',{target_bank:bankId,desired_balance:balance,effective_date:date}));
+}
+export async function cancelCardSeries(seriesId:string) {
+ return withFreshSession(()=>supabase.rpc('cancel_personal_card_series',{target_series:seriesId}));
+}
+
+export async function saveCardPurchases(entries:any[]) {
+ await withFreshSession(()=>supabase.rpc('save_personal_card_purchases',{purchases:entries.map(entryRow)}));
+}
+
+export async function deleteCardPurchase(id:string) {
+ return withFreshSession(()=>supabase.rpc('delete_personal_card_purchase',{target_id:id}));
+}
+
+/** Correct only the invoice's outstanding balance; no payment or bank movement. */
+export async function adjustCardInvoice(cardId:string,month:string,balance:number,expected:number,notes:string) {
+ return withFreshSession(()=>supabase.rpc('adjust_personal_card_invoice',{
+  target_card:cardId,target_month:month,desired_balance:balance,expected_balance:expected,adjustment_notes:notes,
+ }));
+}
