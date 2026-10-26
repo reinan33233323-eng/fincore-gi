@@ -4,7 +4,7 @@ import "./styles/index.css";
 const root = createRoot(document.getElementById("root")!);
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-if (!url || !key || url !== "https://NOVO-PROJETO-GI.supabase.co") {
+if (!url || !key || url !== "https://ckzivafgsebigxlkqpgn.supabase.co") {
   root.render(
     <main className="min-h-screen flex items-center justify-center bg-slate-50 p-8">
       <section className="max-w-lg rounded-2xl bg-white p-8 shadow">

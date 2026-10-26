@@ -597,7 +597,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
       .select("full_name, role, allowed_units, hidden_screens")
       .eq("id", data.user.id)
       .single();
-    if (profileError || !profile || profile.role !== "master" || data.user.email?.toLowerCase() !== "master@financeiro.com") {
+    if (profileError || !profile || profile.role !== "master" || data.user.email?.toLowerCase() !== "gi@master.com") {
       await supabase.auth.signOut();
       setError(
         "Seu perfil de acesso não está configurado. Fale com o administrador.",
@@ -3319,7 +3319,7 @@ function App() {
         .eq("id", authUser.id)
         .single();
       if (!active) return;
-      if (profileError || !profile || profile.role !== "master" || authUser.email?.toLowerCase() !== "master@financeiro.com") {
+      if (profileError || !profile || profile.role !== "master" || authUser.email?.toLowerCase() !== "gi@master.com") {
         await supabase.auth.signOut();
         setCurrentUser(null);
         setAuthReady(true);
