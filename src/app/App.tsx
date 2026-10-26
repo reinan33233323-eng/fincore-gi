@@ -626,11 +626,11 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
           <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-500/25 blur-3xl" />
           <div className="absolute -bottom-24 -left-24 h-80 w-80 rounded-full bg-brand-500/20 blur-3xl" />
           <div className="relative">
-            <p className="text-2xl font-extrabold tracking-tight text-[#e4e4e7]">fincore<span className="ml-2 text-xs font-semibold uppercase tracking-[.25em]">Pessoal</span></p>
+            <p className="text-2xl font-extrabold tracking-tight text-[#e4e4e7]">fincore<span className="ml-2 text-xs font-semibold uppercase tracking-[.25em]">Gi</span></p>
           </div>
           <div className="relative max-w-xl py-12">
             <p className="mb-5 text-xs font-extrabold tracking-[.2em] text-brand-200">
-              GESTÃO FINANCEIRA · PESSOAL
+              GESTÃO FINANCEIRA · GI
             </p>
             <h1 className="text-5xl font-extrabold leading-[1.04] sm:text-6xl">
               Clareza para decidir. Controle para crescer.
